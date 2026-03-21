@@ -62,7 +62,7 @@ def _fintual_auth(email: str, password: str) -> tuple:
     """
     try:
         resp = requests.post(
-            "https://fintual.com/api/user_token",
+            "https://fintual.cl/api/access_tokens",
             json={"user": {"email": email, "password": password}},
             timeout=15,
         )
@@ -71,7 +71,8 @@ def _fintual_auth(email: str, password: str) -> tuple:
         if resp.status_code == 404:
             return None, "404 — endpoint de Fintual no encontrado"
         resp.raise_for_status()
-        token = resp.json().get("data", {}).get("attributes", {}).get("access_token")
+        data = resp.json().get("data", {})
+        token = data.get("attributes", {}).get("token") or data.get("attributes", {}).get("access_token")
         if not token:
             return None, f"Auth OK pero sin token. Respuesta: {resp.text[:300]}"
         return token, None
@@ -79,12 +80,12 @@ def _fintual_auth(email: str, password: str) -> tuple:
         return None, str(e)
 
 
-def _fintual_get_portfolios(token: str) -> list:
+def _fintual_get_portfolios(email: str, token: str) -> list:
     """Fetch all portfolios for the authenticated user."""
     try:
         resp = requests.get(
-            "https://fintual.com/api/portfolios",
-            headers={"Authorization": f"Bearer {token}"},
+            "https://fintual.cl/api/goals",
+            headers={"X-User-Email": email, "X-User-Token": token},
             timeout=15,
         )
         resp.raise_for_status()
@@ -93,7 +94,7 @@ def _fintual_get_portfolios(token: str) -> list:
         return []
 
 
-def _fintual_portfolio_history(token: str, portfolio_id: int, days: int = 90) -> list:
+def _fintual_portfolio_history(email: str, token: str, portfolio_id: int, days: int = 90) -> list:
     """
     Fetch daily portfolio history for a given portfolio.
     Returns list of {date, nav} dicts.
@@ -102,8 +103,8 @@ def _fintual_portfolio_history(token: str, portfolio_id: int, days: int = 90) ->
     from_date = (datetime.today() - timedelta(days=days)).strftime("%Y-%m-%d")
     try:
         resp = requests.get(
-            f"https://fintual.com/api/portfolios/{portfolio_id}/portfolio_days",
-            headers={"Authorization": f"Bearer {token}"},
+            f"https://fintual.cl/api/goals/{portfolio_id}/portfolio_days",
+            headers={"X-User-Email": email, "X-User-Token": token},
             params={"from_date": from_date, "to_date": to_date},
             timeout=20,
         )
@@ -143,7 +144,7 @@ def get_fintual_data(email: str, password: str) -> dict:
         result["error"] = f"Could not authenticate with Fintual: {auth_error}"
         return result
 
-    portfolios = _fintual_get_portfolios(token)
+    portfolios = _fintual_get_portfolios(email, token)
     if not portfolios:
         result["error"] = "No portfolios found on Fintual account."
         return result
@@ -160,7 +161,7 @@ def get_fintual_data(email: str, password: str) -> dict:
         profit_sum = float(attrs.get("profit_sum") or 0)
 
         # Daily return: compare last two days in history
-        history = _fintual_portfolio_history(token, pid, days=90)
+        history = _fintual_portfolio_history(email, token, pid, days=90)
 
         daily_return_pct = None
         if len(history) >= 2:
