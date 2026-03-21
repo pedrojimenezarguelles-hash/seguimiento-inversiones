@@ -62,7 +62,7 @@ def _fintual_auth(email: str, password: str) -> tuple:
     """
     try:
         resp = requests.post(
-            "https://fintual.cl/api/user_token",
+            "https://fintual.com/api/user_token",
             json={"user": {"email": email, "password": password}},
             timeout=15,
         )
@@ -83,7 +83,7 @@ def _fintual_get_portfolios(token: str) -> list:
     """Fetch all portfolios for the authenticated user."""
     try:
         resp = requests.get(
-            "https://fintual.cl/api/portfolios",
+            "https://fintual.com/api/portfolios",
             headers={"Authorization": f"Bearer {token}"},
             timeout=15,
         )
@@ -102,7 +102,7 @@ def _fintual_portfolio_history(token: str, portfolio_id: int, days: int = 90) ->
     from_date = (datetime.today() - timedelta(days=days)).strftime("%Y-%m-%d")
     try:
         resp = requests.get(
-            f"https://fintual.cl/api/portfolios/{portfolio_id}/portfolio_days",
+            f"https://fintual.com/api/portfolios/{portfolio_id}/portfolio_days",
             headers={"Authorization": f"Bearer {token}"},
             params={"from_date": from_date, "to_date": to_date},
             timeout=20,
