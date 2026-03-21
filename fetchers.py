@@ -55,10 +55,10 @@ def get_fx_rates() -> dict:
 # Fintual
 # ---------------------------------------------------------------------------
 
-def _fintual_auth(email: str, password: str) -> str | None:
+def _fintual_auth(email: str, password: str) -> tuple:
     """
     Authenticate with Fintual API.
-    Returns Bearer token or None on failure.
+    Returns (token, error_message). Token is None on failure.
     """
     try:
         resp = requests.post(
@@ -66,11 +66,17 @@ def _fintual_auth(email: str, password: str) -> str | None:
             json={"user": {"email": email, "password": password}},
             timeout=15,
         )
+        if resp.status_code == 401:
+            return None, "401 Unauthorized — email o contraseña incorrectos"
+        if resp.status_code == 404:
+            return None, "404 — endpoint de Fintual no encontrado"
         resp.raise_for_status()
         token = resp.json().get("data", {}).get("attributes", {}).get("access_token")
-        return token
-    except Exception:
-        return None
+        if not token:
+            return None, f"Auth OK pero sin token. Respuesta: {resp.text[:300]}"
+        return token, None
+    except Exception as e:
+        return None, str(e)
 
 
 def _fintual_get_portfolios(token: str) -> list:
@@ -132,9 +138,9 @@ def get_fintual_data(email: str, password: str) -> dict:
         result["error"] = "Fintual credentials not configured."
         return result
 
-    token = _fintual_auth(email, password)
+    token, auth_error = _fintual_auth(email, password)
     if not token:
-        result["error"] = "Could not authenticate with Fintual. Check credentials."
+        result["error"] = f"Could not authenticate with Fintual: {auth_error}"
         return result
 
     portfolios = _fintual_get_portfolios(token)
