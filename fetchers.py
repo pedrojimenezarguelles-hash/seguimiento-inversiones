@@ -62,7 +62,7 @@ def _fintual_auth(email: str, password: str) -> tuple:
     """
     try:
         resp = requests.post(
-            "https://fintual.cl/api/access_tokens",
+            "https://fintual.cl/api/user_token",
             json={"user": {"email": email, "password": password}},
             timeout=15,
         )
@@ -80,18 +80,58 @@ def _fintual_auth(email: str, password: str) -> tuple:
         return None, str(e)
 
 
-def _fintual_get_portfolios(email: str, token: str) -> list:
-    """Fetch all portfolios for the authenticated user."""
+def _fintual_get_user_id(email: str, token: str) -> int | None:
+    """Fetch the current user's ID (needed to filter goals)."""
     try:
         resp = requests.get(
-            "https://fintual.cl/api/goals",
+            "https://fintual.cl/api/users/current",
             headers={"X-User-Email": email, "X-User-Token": token},
             timeout=15,
         )
         resp.raise_for_status()
-        return resp.json().get("data", [])
+        return resp.json().get("data", {}).get("id")
     except Exception:
-        return []
+        return None
+
+
+def _fintual_get_portfolios(email: str, token: str) -> tuple[list, str | None]:
+    """
+    Fetch all portfolios for the authenticated user.
+    Returns (portfolios_list, error_detail).
+    """
+    headers = {"X-User-Email": email, "X-User-Token": token}
+
+    # Try with user_id filter first (more reliable)
+    user_id = _fintual_get_user_id(email, token)
+    params = {"user_id": user_id} if user_id else {}
+
+    try:
+        resp = requests.get(
+            "https://fintual.cl/api/goals",
+            headers=headers,
+            params=params,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+        if data:
+            return data, None
+        # Empty — try without filter as fallback
+        if params:
+            resp2 = requests.get(
+                "https://fintual.cl/api/goals",
+                headers=headers,
+                timeout=15,
+            )
+            resp2.raise_for_status()
+            data2 = resp2.json().get("data", [])
+            if data2:
+                return data2, None
+        # Still empty — surface raw response for debugging
+        raw = resp.text[:400]
+        return [], f"API devolvió array vacío. Respuesta: {raw}"
+    except Exception as e:
+        return [], str(e)
 
 
 def _fintual_portfolio_history(email: str, token: str, portfolio_id: int, days: int = 90) -> list:
@@ -144,9 +184,10 @@ def get_fintual_data(email: str, password: str) -> dict:
         result["error"] = f"Could not authenticate with Fintual: {auth_error}"
         return result
 
-    portfolios = _fintual_get_portfolios(email, token)
+    portfolios, portfolios_error = _fintual_get_portfolios(email, token)
     if not portfolios:
-        result["error"] = "No portfolios found on Fintual account."
+        detail = portfolios_error or "La API no devolvió portfolios."
+        result["error"] = f"No se encontraron portfolios en Fintual. {detail}"
         return result
 
     total = 0.0
